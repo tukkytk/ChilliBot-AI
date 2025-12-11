@@ -1,40 +1,53 @@
+import os
 import numpy as np
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.vgg16 import preprocess_input
-from PIL import Image, ImageDraw
+from PIL import Image
+
+# พยายาม import load_model ถ้ามี TensorFlow
+try:
+    from tensorflow.keras.models import load_model
+except Exception as e:
+    load_model = None
+    print("[ML] TensorFlow/Keras not available:", e)
 
 MODEL_PATH = "VGG16_model.keras"
+model = None
+MODEL_READY = False
 
-CLASS_LABELS = ["พริกดี", "พริกเสีย", "โรคใบไหม้"]
+# ===== โหลดโมเดลแบบปลอดภัย =====
+if load_model is not None and os.path.exists(MODEL_PATH):
+    try:
+        print("[ML] Loading model from", MODEL_PATH)
+        model = load_model(MODEL_PATH)
+        MODEL_READY = True
+        print("[ML] Model Loaded Successfully.")
+    except Exception as e:
+        print("[ML] Failed to load model:", e)
+else:
+    print(f"[ML] Model file '{MODEL_PATH}' not found. Running in NO-ML mode.")
 
-print("[ML] Loading model from", MODEL_PATH)
-model = load_model(MODEL_PATH)
-print("[ML] Model Loaded Successfully.")
+# TODO: แก้ชื่อ class ให้ตรงกับโมเดลจริงของคุณ
+CLASS_NAMES = ["Class A", "Class B", "Class C"]
 
 
-def predict_image(image_path):
-    print("[ML] Predicting image:", image_path)
-
-    img = image.load_img(image_path, target_size=(224, 224))
-    arr = image.img_to_array(img)
+def _preprocess_image(image_path: str, target_size=(224, 224)):
+    img = Image.open(image_path).convert("RGB")
+    img = img.resize(target_size)
+    arr = np.array(img, dtype=np.float32) / 255.0
     arr = np.expand_dims(arr, axis=0)
-    arr = preprocess_input(arr)
+    return arr
 
-    preds = model.predict(arr)
-    print("[ML] Softmax prediction:", preds)
 
-    idx = np.argmax(preds)
-    confidence = preds[0][idx]
+def predict_image(image_path: str):
+    """
+    คืนค่า (label, confidence)
+    ถ้าไม่มีโมเดล → คืนข้อความโหมดทดสอบ + 0.0
+    """
+    if not MODEL_READY or model is None:
+        return "ยังไม่ได้โหลดโมเดล (โหมดทดสอบ)", 0.0
 
-    label = CLASS_LABELS[idx]
-    print(f"[ML] Final Prediction → {label} (index {idx})")
-
-    return label, float(confidence)
-
-def draw_bounding_box(img):
-    draw = ImageDraw.Draw(img)
-    w, h = img.size
-    box = [w * 0.2, h * 0.2, w * 0.8, h * 0.8]
-    draw.rectangle(box, outline="red", width=6)
-    return img
+    x = _preprocess_image(image_path)
+    preds = model.predict(x)[0]
+    idx = int(np.argmax(preds))
+    label = CLASS_NAMES[idx]
+    conf = float(preds[idx] * 100.0)
+    return label, conf
