@@ -14,10 +14,10 @@ from linebot.v3.messaging import (
     Configuration,
     ApiClient,
     MessagingApi,
+    MessagingApiBlob,   # ✅ เพิ่มบรรทัดนี้
     ReplyMessageRequest,
     TextMessage,
 )
-
 from ml_model import predict_image  # ใช้แล้วหรือไม่ใช้ก็ได้ (ตอนนี้ NO-ML mode)
 
 # ================== FastAPI App ==================
@@ -77,32 +77,31 @@ def handle_image_message(event: MessageEvent):
     message_id = event.message.id
     print(f"[IMG] Received image message id={message_id}")
 
-    # 1) ดึงภาพจาก LINE ด้วย MessagingApi v3
+    # 1) ดึงไฟล์ภาพจาก LINE ด้วย MessagingApiBlob (สำหรับ binary data)
     with ApiClient(configuration) as api_client:
-        api = MessagingApi(api_client)
-        content = api.get_message_content(message_id)
+        blob_api = MessagingApiBlob(api_client)
+        image_bytes = blob_api.get_message_content(message_id)  # ได้เป็น bytes ตรง ๆ
 
-        # content.body = bytes stream
+        # เซฟเป็นไฟล์ชั่วคราว
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            for chunk in content.body:
-                tmp.write(chunk)
+            tmp.write(image_bytes)
             tmp_path = tmp.name
 
-    # 2) วิเคราะห์ภาพ
+    # 2) วิเคราะห์รูปภาพด้วยโมเดล (ตอนนี้ถ้าไม่มีโมเดลจะเป็น NO-ML mode)
     try:
         label, conf = predict_image(tmp_path)
         result_text = f"ผลวิเคราะห์: {label} (ความมั่นใจ {conf:.2f}%)"
     except Exception as e:
         print("[ERROR] predict_image:", e)
-        result_text = "ไม่สามารถวิเคราะห์รูปภาพได้ในตอนนี้"
+        result_text = "ไม่สามารถวิเคราะห์รูปภาพได้ในขณะนี้"
 
-    # 3) ตอบกลับ
+    # 3) ตอบกลับผู้ใช้
     with ApiClient(configuration) as api_client:
-        api = MessagingApi(api_client)
-        api.reply_message(
+        msg_api = MessagingApi(api_client)
+        msg_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=result_text)]
+                messages=[TextMessage(text=result_text)],
             )
         )
 
