@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+line-bot-sdk
+tensorflow
+numpy
+Pillow
+ml_model
+predictor
