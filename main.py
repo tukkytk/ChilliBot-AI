@@ -14,7 +14,10 @@ from linebot.v3.messaging import (
     Configuration,
     ApiClient,
     MessagingApi,
+    ReplyMessageRequest,
+    TextMessage,
 )
+
 
 from ml_model import predict_image  # ฟังก์ชันวิเคราะห์รูป
 
