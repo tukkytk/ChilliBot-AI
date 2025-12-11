@@ -77,30 +77,32 @@ def handle_image_message(event: MessageEvent):
     message_id = event.message.id
     print(f"[IMG] Received image message id={message_id}")
 
-    # 1) ดาวน์โหลดภาพจาก LINE มาชั่วคราว
+    # 1) ดึงภาพจาก LINE ด้วย MessagingApi v3
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        content = line_bot_api.get_message_content(message_id)
+        api = MessagingApi(api_client)
+        content = api.get_message_content(message_id)
 
+        # content.body = bytes stream
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            for chunk in content.iter_content():
+            for chunk in content.body:
                 tmp.write(chunk)
             tmp_path = tmp.name
 
-    # 2) วิเคราะห์รูปด้วยโมเดล (ตอนนี้ NO-ML mode ก็จะส่งข้อความทดแทน)
+    # 2) วิเคราะห์ภาพ
     try:
         label, conf = predict_image(tmp_path)
         result_text = f"ผลวิเคราะห์: {label} (ความมั่นใจ {conf:.2f}%)"
     except Exception as e:
         print("[ERROR] predict_image:", e)
-        result_text = "ไม่สามารถวิเคราะห์รูปภาพได้ในขณะนี้"
+        result_text = "ไม่สามารถวิเคราะห์รูปภาพได้ในตอนนี้"
 
-    # 3) ตอบกลับผู้ใช้
+    # 3) ตอบกลับ
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
+        api = MessagingApi(api_client)
+        api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=result_text)],
+                messages=[TextMessage(text=result_text)]
             )
         )
+
