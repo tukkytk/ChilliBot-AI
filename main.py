@@ -18,17 +18,17 @@ from linebot.v3.messaging import (
     TextMessage,
 )
 
+from ml_model import predict_image  # ใช้แล้วหรือไม่ใช้ก็ได้ (ตอนนี้ NO-ML mode)
 
-from ml_model import predict_image  # ฟังก์ชันวิเคราะห์รูป
-
+# ================== FastAPI App ==================
 app = FastAPI()
 
-# ====== ดึงค่า TOKEN/SECRET จาก Environment (Render) ======
-CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+# ================== LINE Config ==================
+CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
-    print("[WARN] LINE token/secret is not set in environment variables.")
+    print("[WARN] LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is empty!")
 
 handler = WebhookHandler(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
@@ -36,10 +36,10 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "ChilliBot AI is running"}
+    return {"status": "ok", "message": "ChilliBot AI is running on Render"}
 
 
-# ====== Webhook หลัก ======
+# ================== Webhook ==================
 @app.post("/webhook")
 async def callback(request: Request):
     body = await request.body()
@@ -48,15 +48,14 @@ async def callback(request: Request):
     try:
         handler.handle(body.decode("utf-8"), signature)
     except Exception as e:
-        # ถ้า signature ไม่ตรง หรือ handle ล้ม → จะมาที่นี่
-        print("[ERROR] Webhook handler error:", e)
+        print("[ERROR] Webhook Error:", e)
+        # ถ้า error ภายใน handler ให้ส่ง 400 กลับ LINE
         raise HTTPException(status_code=400, detail="Webhook handler error")
 
-    # สำคัญ: ต้องคืน 200 เสมอ
     return PlainTextResponse("OK", status_code=200)
 
 
-# ====== กรณีข้อความ (Text) ======
+# ================== Text Message Handler ==================
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent):
     user_text = event.message.text
@@ -64,50 +63,44 @@ def handle_text_message(event: MessageEvent):
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[
-                    TextMessage(text=reply_text)
-                ]
+                messages=[TextMessage(text=reply_text)],
             )
         )
 
 
-
-# ====== กรณีรูปภาพ (Image) ======
+# ================== Image Message Handler ==================
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event: MessageEvent):
     message_id = event.message.id
-    print(f"[IMG] Receive image message id={message_id}")
+    print(f"[IMG] Received image message id={message_id}")
 
-    # 1) โหลดรูปจาก LINE
+    # 1) ดาวน์โหลดภาพจาก LINE มาชั่วคราว
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         content = line_bot_api.get_message_content(message_id)
 
-        # NOTE: ใน SDK v3 object นี้มักจะมีเมธอด iter_content()
-        # คล้าย requests.Response
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
             for chunk in content.iter_content():
                 tmp.write(chunk)
             tmp_path = tmp.name
 
-    # 2) ส่งให้โมเดลวิเคราะห์
+    # 2) วิเคราะห์รูปด้วยโมเดล (ตอนนี้ NO-ML mode ก็จะส่งข้อความทดแทน)
     try:
         label, conf = predict_image(tmp_path)
         result_text = f"ผลวิเคราะห์: {label} (ความมั่นใจ {conf:.2f}%)"
     except Exception as e:
         print("[ERROR] predict_image:", e)
-        result_text = "เกิดข้อผิดพลาดในการวิเคราะห์รูปภาพ"
+        result_text = "ไม่สามารถวิเคราะห์รูปภาพได้ในขณะนี้"
 
-    # 3) ตอบกลับไปที่ LINE
-with ApiClient(configuration) as api_client:
-    line_bot_api = MessagingApi(api_client)
-    line_bot_api.reply_message(
-        ReplyMessageRequest(
-            reply_token=event.reply_token,
-            messages=[TextMessage(text=result_text)]
+    # 3) ตอบกลับผู้ใช้
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=result_text)],
+            )
         )
-    )
