@@ -2,20 +2,15 @@ import os
 import requests
 import numpy as np
 from PIL import Image
-from tensorflow.keras.models import load_model  # ใช้ tf.keras เพราะมีใน tensorflow
+from tensorflow.keras.models import load_model
 
-# ===== ตั้งค่าโมเดล =====
-MODEL_PATH = "ChiliDisease7_finetune.keras"
-
-# >>>>> แก้ตรงนี้ให้เป็น Google Drive FILE ID ของคุณ <<<<<
+MODEL_PATH = "ChiliDisease7_finetune.keras"  # ตามชื่อไฟล์จริงของคุณ
 DRIVE_FILE_ID = "1Of5dcV9FvWUR0iIs-VyrboTKOzZic537"
-DRIVE_DOWNLOAD_URL = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+GOOGLE_DRIVE_URL = "https://drive.google.com/uc?export=download"
 
 model = None
 MODEL_READY = False
 
-# กำหนดชื่อคลาสตามโมเดลของคุณ
-# ถ้ายังไม่แน่ใจ ใช้เป็น placeholder ไปก่อนก็ได้
 CLASS_NAMES = [
     "Class 0",
     "Class 1",
@@ -28,35 +23,54 @@ CLASS_NAMES = [
 
 
 def download_model():
-    """ดาวน์โหลดโมเดลจาก Google Drive ถ้ายังไม่มีไฟล์ในเครื่อง"""
+    """ดาวน์โหลดโมเดลจาก Google Drive (รองรับไฟล์ใหญ่ / confirm token)"""
     if os.path.exists(MODEL_PATH):
         print(f"[ML] Model file '{MODEL_PATH}' already exists. Skip download.")
         return
 
-    if not DRIVE_FILE_ID or "YOUR_GOOGLE_DRIVE_FILE_ID_HERE" in DRIVE_FILE_ID:
+    if not DRIVE_FILE_ID:
         print("[ML] DRIVE_FILE_ID is not set. Running in NO-ML mode.")
         return
 
     print("[ML] Downloading model from Google Drive...")
+
+    session = requests.Session()
+    params = {"id": DRIVE_FILE_ID, "export": "download"}
+
+    # เรียกครั้งแรก
+    response = session.get(GOOGLE_DRIVE_URL, params=params, stream=True)
+    token = None
+
+    # หา confirm token ถ้า Google ให้ยืนยัน
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            token = value
+            break
+
+    if token:
+        print("[ML] Found confirm token, retrying download...")
+        params["confirm"] = token
+        response = session.get(GOOGLE_DRIVE_URL, params=params, stream=True)
+
     try:
-        with requests.get(DRIVE_DOWNLOAD_URL, stream=True, timeout=600) as r:
-            r.raise_for_status()
-            total = 0
-            with open(MODEL_PATH, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        total += len(chunk)
-        print(f"[ML] Model downloaded successfully. Size: {total / (1024*1024):.2f} MB")
+        response.raise_for_status()
     except Exception as e:
         print("[ML ERROR] Failed to download model:", e)
+        return
+
+    total = 0
+    with open(MODEL_PATH, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
+                total += len(chunk)
+
+    print(f"[ML] Model downloaded successfully. Size: {total / (1024*1024):.2f} MB")
 
 
 def load_ml_model():
-    """โหลดโมเดลจากไฟล์"""
     global model, MODEL_READY
 
-    # ถ้าไม่มีไฟล์ ให้ดาวน์โหลดมาก่อน
     download_model()
 
     if not os.path.exists(MODEL_PATH):
@@ -77,7 +91,6 @@ def load_ml_model():
 
 
 def _preprocess_image(image_path: str, target_size=(224, 224)):
-    """เตรียมรูปให้เข้ากับโมเดล VGG16 (หรือโมเดลที่คุณใช้)"""
     img = Image.open(image_path).convert("RGB")
     img = img.resize(target_size)
     arr = np.array(img, dtype=np.float32) / 255.0
@@ -86,11 +99,6 @@ def _preprocess_image(image_path: str, target_size=(224, 224)):
 
 
 def predict_image(image_path: str):
-    """
-    คืนค่า (label, confidence)
-
-    ถ้าไม่มีโมเดล → คืน ("ยังไม่ได้โหลดโมเดล (โหมดทดสอบ)", 0.0)
-    """
     if not MODEL_READY or model is None:
         return "ยังไม่ได้โหลดโมเดล (โหมดทดสอบ)", 0.0
 
@@ -106,5 +114,5 @@ def predict_image(image_path: str):
         return "ไม่สามารถวิเคราะห์ภาพได้", 0.0
 
 
-# โหลดโมเดลตั้งแต่ตอน import
+# เรียกโหลดโมเดลตอน import
 load_ml_model()
