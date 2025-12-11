@@ -2,9 +2,10 @@ import os
 import requests
 from keras.models import load_model
 
-MODEL_PATH = "VGG16_model.keras"
-DRIVE_FILE_ID = "YOUR_MODEL_FILE_ID"   # เปลี่ยน!
+MODEL_PATH = "ChiliDisease7_finetune.keras"
+DRIVE_FILE_ID = "1Of5dcV9FvWUR0iIs-VyrboTKOzZic537"   # เปลี่ยน!
 DRIVE_URL = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+
 
 model = None
 
