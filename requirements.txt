@@ -7,3 +7,6 @@ numpy
 Pillow
 ml_model
 predictor
+requests
+
+
