@@ -64,10 +64,16 @@ def handle_text_message(event: MessageEvent):
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
+
         line_bot_api.reply_message(
-            reply_token=event.reply_token,
-            messages=[{"type": "text", "text": reply_text}],
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[
+                    TextMessage(text=reply_text)
+                ]
+            )
         )
+
 
 
 # ====== กรณีรูปภาพ (Image) ======
@@ -97,9 +103,14 @@ def handle_image_message(event: MessageEvent):
         result_text = "เกิดข้อผิดพลาดในการวิเคราะห์รูปภาพ"
 
     # 3) ตอบกลับไปที่ LINE
-    with ApiClient(configuration) as api_client:
+      with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
+
         line_bot_api.reply_message(
-            reply_token=event.reply_token,
-            messages=[{"type": "text", "text": result_text}],
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[
+                    TextMessage(text=result_text)
+                ]
+            )
         )
