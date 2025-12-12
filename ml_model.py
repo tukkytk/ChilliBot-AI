@@ -8,7 +8,8 @@ from tensorflow.keras.models import load_model
 MODEL_PATH = "ChiliDisease7_finetune.keras"
 
 # >>> แก้ให้เป็น URL ของ GitHub Release ของคุณจริง ๆ <<<
-GITHUB_MODEL_URL = "https://github.com/tukkytk/ChilliBot-AI/releases/download/model-v1/ChiliDisease7_finetune.keras"
+GITHUB_MODEL_URL = "https://github.com/tukkytk/ChilliBot-AI/releases/download/chilli/ChiliDisease7_finetune.keras"
+
 
 model = None
 MODEL_READY = False
