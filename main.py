@@ -84,59 +84,31 @@ def handle_image_message(event: MessageEvent):
 
     tmp_path = None
     try:
-        # 1) ดาวน์โหลดรูปจาก LINE (ต้องใช้ .data)
         with ApiClient(configuration) as api_client:
             blob_api = MessagingApiBlob(api_client)
             content = blob_api.get_message_content(message_id)
-            image_bytes = content.data  # ✅ สำคัญมาก
 
-        # 2) เซฟเป็นไฟล์ชั่วคราว
+            # ✅ FIX
+            image_bytes = content if isinstance(content, (bytes, bytearray)) else content.data
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
             tmp.write(image_bytes)
             tmp_path = tmp.name
 
-        # 3) วิเคราะห์ภาพ (รองรับทั้ง tuple และ dict)
         result = predict_image(tmp_path)
 
+        # รองรับ predict_image ทั้งแบบ dict และ tuple
         if isinstance(result, dict):
-            # เวอร์ชันใหม่ (แนะนำ)
             if result.get("ok"):
-                result_text_1 = (
-                    "🔍 ผลวิเคราะห์ภาพใบพริก\n"
-                    f"ภาพนี้มีแนวโน้มเป็น: {result.get('disease_name')}\n"
-                    f"ความมั่นใจของโมเดล: {result.get('confidence', 0.0):.2f}%"
-                )
-                result_text_2 = (
-                    f"📝 ลักษณะอาการที่พบ\n{result.get('description','')}\n\n"
-                    f"✅ แนวทางจัดการเบื้องต้น\n{result.get('advice','')}\n\n"
-                    f"ℹ️ อ่านเพิ่มเติม: {result.get('info_url','')}"
-                )
-
-                messages = [TextMessage(text=result_text_1), TextMessage(text=result_text_2)]
-
-                # ถ้ามีลิงก์รูปประกอบ
-                image_url = result.get("image_url") or ""
-                if image_url:
-                    messages.append(
-                        ImageMessage(
-                            original_content_url=image_url,
-                            preview_image_url=image_url,
-                        )
-                    )
+                msg1 = f"🔍 ผลวิเคราะห์: {result.get('disease_name')}\nความมั่นใจ: {result.get('confidence',0):.2f}%"
+                msg2 = f"✅ คำแนะนำ:\n{result.get('advice','')}\n\nอ่านเพิ่มเติม: {result.get('info_url','')}"
+                messages = [TextMessage(text=msg1), TextMessage(text=msg2)]
             else:
-                result_text = (
-                    "🔍 ผลวิเคราะห์ภาพใบพริก\n"
-                    f"{result.get('disease_name','ยังไม่ได้โหลดโมเดล')}\n\n"
-                    f"{result.get('description','')}\n\n"
-                    f"คำแนะนำ:\n{result.get('advice','')}"
-                )
-                messages = [TextMessage(text=result_text)]
+                messages = [TextMessage(text=result.get("disease_name","วิเคราะห์ไม่สำเร็จ"))]
         else:
-            # เวอร์ชันเดิม (tuple): label, conf
             label, conf = result
             messages = [TextMessage(text=f"ผลวิเคราะห์: {label} (ความมั่นใจ {conf:.2f}%)")]
 
-        # 4) ตอบกลับ
         with ApiClient(configuration) as api_client:
             msg_api = MessagingApi(api_client)
             msg_api.reply_message(
@@ -148,7 +120,6 @@ def handle_image_message(event: MessageEvent):
 
     except Exception as e:
         print("[ERROR] Image handler:", e)
-        # ตอบกลับแบบไม่ให้ webhook ล้ม
         with ApiClient(configuration) as api_client:
             msg_api = MessagingApi(api_client)
             msg_api.reply_message(
@@ -157,10 +128,13 @@ def handle_image_message(event: MessageEvent):
                     messages=[TextMessage(text="ขออภัย ระบบวิเคราะห์รูปภาพขัดข้องชั่วคราว ลองใหม่อีกครั้งค่ะ")],
                 )
             )
-
     finally:
-        # ลบไฟล์ชั่วคราว
         if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+
             try:
                 os.remove(tmp_path)
             except:
